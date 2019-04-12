@@ -86,8 +86,9 @@ var index = int32(1)
 
 // Generate will generate
 func Generate(filepath string, config *SpssConfig) error {
-	os.Remove(filepath)
 	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
+	defer file.Close()
+
 	if err != nil {
 		return fmt.Errorf("Unable to create or open %s: %s", filepath, err.Error())
 	}

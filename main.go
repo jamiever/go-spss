@@ -87,7 +87,16 @@ var index = int32(1)
 // Generate will generate
 func Generate(filepath string, config *SpssConfig) error {
 	file, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0644)
-	defer file.Close()
+	defer func() {
+		file.Close()
+
+		// Reset all global variables
+		// TODO: Refactor to include in struct
+		variables = []variable{}
+		values = make(map[string]string)
+		shortNames = make(map[string]bool)
+		index = int32(1)
+	}()
 
 	if err != nil {
 		return fmt.Errorf("Unable to create or open %s: %s", filepath, err.Error())

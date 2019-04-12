@@ -460,4 +460,5 @@ func (s *spssWriter) updateHeaderNCases() {
 
 func (s *spssWriter) finish() {
 	s.updateHeaderNCases()
+	count = 0
 }

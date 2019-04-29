@@ -112,6 +112,7 @@ func (s *spssWriter) writeString(v variable, val string) error {
 
 func (s *spssWriter) writeValues(values map[string]string) error {
 	for _, v := range variables {
+		s.Flush()
 		var val, hasVal = values[v.name]
 
 		if !hasVal {
@@ -199,6 +200,7 @@ func (s *spssWriter) headerRecord(fileLabel string) {
 
 func (s *spssWriter) writeVariables(vars []variable) error {
 	for _, v := range vars {
+		s.Flush()
 		// log.Printf("Adding variable: %+v\n", v)
 		for segment := 0; segment < int(v.segments); segment++ {
 			width := v.segmentWidth(segment)

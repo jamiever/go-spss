@@ -133,7 +133,7 @@ func (s *spssWriter) writeValues(values map[string]string) error {
 		case SpssTypeDate:
 			t, err := time.Parse("1-Jan-2019", val)
 			if err != nil {
-				log.Printf("Writing missing value: %s", v.name)
+				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
 			} else {
 				s.bytecode.WriteNumber(float64(t.Unix()))
@@ -141,7 +141,7 @@ func (s *spssWriter) writeValues(values map[string]string) error {
 		case SpssTypeDatetime:
 			t, err := time.Parse("1-Jan-2019 14:00:00", val)
 			if err != nil {
-				log.Printf("Writing missing value: %s", v.name)
+				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
 			} else {
 				s.bytecode.WriteNumber(float64(t.Unix()))
@@ -149,7 +149,7 @@ func (s *spssWriter) writeValues(values map[string]string) error {
 		default:
 			f, err := strconv.ParseFloat(val, 64)
 			if err != nil {
-				log.Printf("Writing missing value: %s", v.name)
+				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
 			} else {
 				s.bytecode.WriteNumber(f)
@@ -199,7 +199,7 @@ func (s *spssWriter) headerRecord(fileLabel string) {
 
 func (s *spssWriter) writeVariables(vars []variable) error {
 	for _, v := range vars {
-		log.Printf("Adding variable: %+v\n", v)
+		// log.Printf("Adding variable: %+v\n", v)
 		for segment := 0; segment < int(v.segments); segment++ {
 			width := v.segmentWidth(segment)
 			binary.Write(s, endian, int32(2)) // rec_type
@@ -286,7 +286,7 @@ func (s *spssWriter) valueLabelRecords() {
 
 			binary.Write(s, endian, int32(4)) // rec_type
 			binary.Write(s, endian, int32(1)) // var_count
-			log.Printf("Index: %d", v.index)
+			// log.Printf("Index: %d", v.index)
 			binary.Write(s, endian, v.index) // vars
 		}
 	}

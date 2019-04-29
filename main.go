@@ -122,7 +122,7 @@ func Generate(filepath string, config *SpssConfig) error {
 			values[v.Name] = v.Value
 		}
 
-		log.Printf("Writing values: %+v", values)
+		// log.Printf("Writing values: %+v", values)
 		writer.writeValues(values)
 		values = make(map[string]string)
 	}

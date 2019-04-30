@@ -29,17 +29,21 @@ type SpssWriter struct {
 	valCount      int                 // Number of value rows
 }
 
+// NewSpssWriter - Returns an SPSS Writer struct given a file
 func NewSpssWriter(file *os.File) (*SpssWriter, error) {
 	writer := bufio.NewWriter(file)
 
 	byteCode := newBytecodeWriter(writer, 100.0)
 
 	spssWriter := &SpssWriter{
-		seeker:   file,
-		Writer:   writer,
-		bytecode: byteCode,
-		index:    1,
-		endian:   binary.LittleEndian,
+		seeker:    file,
+		Writer:    writer,
+		bytecode:  byteCode,
+		names:     make(map[string]string),
+		variables: make(map[string]variable),
+		index:     1,
+		endian:    binary.LittleEndian,
+		count:     0,
 	}
 
 	spssWriter.headerRecord()
@@ -117,6 +121,8 @@ func (s *SpssWriter) writeString(v variable, val string) error {
 	return nil
 }
 
+// AddValueRow - Add a row of values to the SPSS file
+// CAUTION: All variables must be written before adding values
 func (s *SpssWriter) AddValueRow(values map[string]string) error {
 	if s.valCount == 0 {
 		s.writeInfoRecords()
@@ -196,10 +202,12 @@ func (s *SpssWriter) headerRecord() {
 	binary.Write(s, endian, float64(100))                  // bias
 	s.Write(stob(c.Format("02 Jan 06"), 9))                // creation_date
 	s.Write(stob(c.Format("15:04:05"), 8))                 // creation_time
-	s.Write(stob("", 64))                                  // file_label
+	s.Write(stob("Generated SPSS", 64))                    // file_label
 	s.Write(stob("\x00\x00\x00", 3))                       // padding
 }
 
+// AddVariable - Add variables to the SPSS file
+// CAUTION: Once values are being written you cannot add any more variables
 func (s *SpssWriter) AddVariable(V *Variable) error {
 	// Check if name is empty
 	if V.Name == "" {
@@ -526,6 +534,7 @@ func (s *SpssWriter) updateHeaderNCases() {
 	binary.Write(s.seeker, endian, int32(s.valCount)) // ncases in headerRecord
 }
 
+// Finish - Execute this once all variables and values are written to complete the file
 func (s *SpssWriter) Finish() {
 	s.updateHeaderNCases()
 	s.Flush()

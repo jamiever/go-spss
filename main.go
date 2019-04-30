@@ -76,41 +76,6 @@ type Value struct {
 	Value string
 }
 
-// var variables []variable
-// var values = make(map[string]string)
-// var shortNames = make(map[string]bool)
-// var index = int32(1)
-
-// Generate will generate
-// func Generate(filepath string, config *SpssConfig) error {
-// 	// Parse all user provided variables and add them to the slice
-// 	for _, v := range config.Variables {
-// 		log.Printf("Index: %d", index)
-// 		if err := addVariable(&v); err != nil {
-// 			return fmt.Errorf("Error during variable parsing for variable %s: %s", v.Name, err.Error())
-// 		}
-// 	}
-
-// 	if err := writer.start(); err != nil {
-// 		return fmt.Errorf("Something went wrong: %s", err.Error())
-// 	}
-
-// 	// Write cases
-// 	for _, va := range config.Values {
-// 		for _, v := range va {
-// 			values[v.Name] = v.Value
-// 		}
-
-// 		// log.Printf("Writing values: %+v", values)
-// 		writer.writeValues(values)
-// 		values = make(map[string]string)
-// 	}
-
-// 	writer.finish()
-
-// 	return nil
-// }
-
 var nameValidatorRegex = regexp.MustCompile(`(?si)^[a-z@][a-z0-9!._#@$]*[^\.]$`)
 
 func (v *Variable) getMeasure() int8 {

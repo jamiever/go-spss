@@ -1,5 +1,5 @@
 /*
-xml2sav - converts a custom xml document to a SPSS binary file.
+Package gospss - converts a custom xml document to a SPSS binary file.
 Copyright (C) 2016-2017 A.J. Jessurun
 This file is part of xml2sav.
 Xml2sav is free software: you can redistribute it and/or modify

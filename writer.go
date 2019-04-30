@@ -8,36 +8,47 @@ import (
 	"io"
 	"log"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var endian = binary.LittleEndian
-var count = 0
 
-type spssWriter struct {
-	*bufio.Writer                 // Buffered writer
-	seeker        io.WriteSeeker  // Original writer
-	bytecode      *bytecodeWriter // Special writer for compressed cases
-	// Dict          []*Var          // Variables
-	// DictMap       map[string]*Var // Long variable names index
-	// ShortMap      map[string]*Var // Short variable names index
-	// Count         int32           // Number of cases
-	index int32
+// SpssWriter defines the struct to write SPSS objects
+type SpssWriter struct {
+	*bufio.Writer                     // Buffered writer
+	seeker        io.WriteSeeker      // Original writer
+	bytecode      *bytecodeWriter     // Special writer for compressed cases
+	names         map[string]string   // Mapping of names for easy access
+	count         int                 // Count of values
+	index         int32               // Writing index
+	endian        binary.ByteOrder    // Endian
+	variables     map[string]variable // Written variables
+	valCount      int                 // Number of value rows
 }
 
-func newSpssWriter(w io.WriteSeeker) *spssWriter {
-	writer := bufio.NewWriter(w)
+// NewSpssWriter - Returns an SPSS Writer struct given a file
+func NewSpssWriter(file *os.File) (*SpssWriter, error) {
+	writer := bufio.NewWriter(file)
+
 	byteCode := newBytecodeWriter(writer, 100.0)
-	return &spssWriter{
-		seeker:   w,
-		Writer:   writer,
-		bytecode: byteCode,
-		// DictMap:  make(map[string]*Var),
-		// ShortMap: make(map[string]*Var),
-		index: 1,
+
+	spssWriter := &SpssWriter{
+		seeker:    file,
+		Writer:    writer,
+		bytecode:  byteCode,
+		names:     make(map[string]string),
+		variables: make(map[string]variable),
+		index:     1,
+		endian:    binary.LittleEndian,
+		count:     0,
 	}
+
+	spssWriter.headerRecord()
+
+	return spssWriter, nil
 }
 
 func stob(s string, l int) []byte {
@@ -81,9 +92,9 @@ func elementCount(width int32) int32 {
 	return ((width - 1) / 8) + 1
 }
 
-func caseSize() int32 {
+func (s *SpssWriter) caseSize() int32 {
 	size := int32(0)
-	for _, v := range variables {
+	for _, v := range s.variables {
 		for s := 0; s < int(v.segments); s++ {
 			size += elementCount(v.segmentWidth(s))
 		}
@@ -91,7 +102,7 @@ func caseSize() int32 {
 	return size
 }
 
-func (s *spssWriter) writeString(v variable, val string) error {
+func (s *SpssWriter) writeString(v variable, val string) error {
 	for se := 0; se < int(v.segments); se++ {
 		var p string
 		if len(val) > 255 {
@@ -110,8 +121,14 @@ func (s *spssWriter) writeString(v variable, val string) error {
 	return nil
 }
 
-func (s *spssWriter) writeValues(values map[string]string) error {
-	for _, v := range variables {
+// AddValueRow - Add a row of values to the SPSS file
+// CAUTION: All variables must be written before adding values
+func (s *SpssWriter) AddValueRow(values map[string]string) error {
+	if s.valCount == 0 {
+		s.writeInfoRecords()
+	}
+
+	for _, v := range s.variables {
 		var val, hasVal = values[v.name]
 
 		if !hasVal {
@@ -157,17 +174,11 @@ func (s *spssWriter) writeValues(values map[string]string) error {
 		}
 	}
 
-	count++
+	s.valCount++
 	return nil
 }
 
-func (s *spssWriter) start() error {
-	s.headerRecord("testing")
-	// Write variables
-	if err := s.writeVariables(variables); err != nil {
-		return fmt.Errorf("Error during writing of variables: %s", err.Error())
-	}
-
+func (s *SpssWriter) writeInfoRecords() {
 	s.valueLabelRecords()
 	s.machineIntegerInfoRecord()
 	s.machineFloatingPointInfoRecord()
@@ -177,87 +188,150 @@ func (s *spssWriter) start() error {
 	s.encodingRecord()
 	s.longStringValueLabelsRecord()
 	s.terminationRecord()
-
-	return nil
 }
 
-func (s *spssWriter) headerRecord(fileLabel string) {
+func (s *SpssWriter) headerRecord() {
 	c := time.Now()
 	s.Write(stob("$FL2", 4))                               // rec_tyoe
 	s.Write(stob("@(#) SPSS DATA FILE - xml2sav 2.0", 60)) // prod_name
 	binary.Write(s, endian, int32(2))                      // layout_code
-	binary.Write(s, endian, caseSize())                    // nominal_case_size
+	binary.Write(s, endian, s.caseSize())                  // nominal_case_size
 	binary.Write(s, endian, int32(1))                      // compression
 	binary.Write(s, endian, int32(0))                      // weight_index
 	binary.Write(s, endian, int32(-1))                     // ncases
 	binary.Write(s, endian, float64(100))                  // bias
 	s.Write(stob(c.Format("02 Jan 06"), 9))                // creation_date
 	s.Write(stob(c.Format("15:04:05"), 8))                 // creation_time
-	s.Write(stob(fileLabel, 64))                           // file_label
+	s.Write(stob("Generated SPSS", 64))                    // file_label
 	s.Write(stob("\x00\x00\x00", 3))                       // padding
 }
 
-func (s *spssWriter) writeVariables(vars []variable) error {
-	for _, v := range vars {
-		// log.Printf("Adding variable: %+v\n", v)
-		for segment := 0; segment < int(v.segments); segment++ {
-			width := v.segmentWidth(segment)
-			binary.Write(s, endian, int32(2)) // rec_type
-			binary.Write(s, endian, width)
+// AddVariable - Add variables to the SPSS file
+// CAUTION: Once values are being written you cannot add any more variables
+func (s *SpssWriter) AddVariable(V *Variable) error {
+	// Check if name is empty
+	if V.Name == "" {
+		return fmt.Errorf("Name cannot be empty")
+	}
 
-			if segment == 0 && len(v.label) > 0 {
-				binary.Write(s, endian, int32(1)) // Has label
-			} else {
-				binary.Write(s, endian, int32(0)) // No label
+	if len(V.Name) > 64 {
+		return fmt.Errorf("Name cannot exceed 64 characters: %s", V.Name)
+	}
+
+	matched := nameValidatorRegex.MatchString(V.Name)
+
+	if !matched {
+		return fmt.Errorf("Name %s does not meet the requirements for SPSS, please refer to https://www.ibm.com/support/knowledgecenter/en/SSLVMB_24.0.0/spss/base/syn_variables_variable_names.html", V.Name)
+	}
+
+	// Check if name already exists (duplicate)
+	_, exists := s.names[V.Name]
+
+	if exists {
+		return fmt.Errorf("Cannot add variable with name %s since it already exists", V.Name)
+	}
+
+	// Check decimal range
+	if V.Decimal < 0 || V.Decimal > 16 {
+		return fmt.Errorf("Cannot set decimal of %d, value must be between 0 and 16", V.Decimal)
+	}
+
+	if V.Width < 0 || V.Width > 32767 {
+		return fmt.Errorf("Cannot set width of %d, value must be between 0 and 32676", V.Width)
+	}
+
+	if V.Type != SpssTypeString && V.Width > 40 {
+		return fmt.Errorf("Cannot set width of %d on type %s, value must be between 1 and 40", V.Width, V.Type)
+	}
+
+	// Check if width is set, get the default otherwise
+	if V.Width == 0 {
+		if err := V.setDefaultWidth(); err != nil {
+			return err
+		}
+	} else {
+		if V.Width <= int16(V.Decimal) {
+			return fmt.Errorf("Width cannot be less or equal to decimal")
+		}
+	}
+
+	v := variable{
+		index:     s.index,
+		name:      V.Name,
+		shortName: V.getShortName(s),
+		spssType:  V.Type,
+		measure:   V.getMeasure(),
+		decimal:   V.Decimal,
+		width:     V.Width,
+		format:    V.getPrint(),
+		segments:  V.getSegments(),
+		labels:    V.Labels,
+		label:     V.Label,
+	}
+
+	for i := 0; i < int(v.segments); i++ {
+		s.index += int32(elementCount(v.segmentWidth(i)))
+	}
+
+	for segment := 0; segment < int(v.segments); segment++ {
+		width := v.segmentWidth(segment)
+		binary.Write(s, endian, int32(2)) // rec_type
+		binary.Write(s, endian, width)
+
+		if segment == 0 && len(v.label) > 0 {
+			binary.Write(s, endian, int32(1)) // Has label
+		} else {
+			binary.Write(s, endian, int32(0)) // No label
+		}
+		binary.Write(s, endian, int32(0)) // Missing values
+
+		var format int32
+		if v.spssType == SpssTypeString {
+			format = int32(v.format)<<16 | width<<8
+		} else {
+			format = int32(v.format)<<16 | int32(v.width)<<8 | int32(v.decimal)
+		}
+
+		binary.Write(s, endian, format)
+		binary.Write(s, endian, format)
+
+		s.Write(stob(v.shortName, 8))
+
+		if segment == 0 && len(v.label) > 0 {
+			binary.Write(s, endian, int32(len(v.label))) // Label length
+			s.Write([]byte(v.label))
+			pad := (4 - len(v.label)) % 4
+
+			if pad < 0 {
+				pad += 4
 			}
-			binary.Write(s, endian, int32(0)) // Missing values
 
-			var format int32
-			if v.spssType == SpssTypeString {
-				format = int32(v.format)<<16 | width<<8
-			} else {
-				format = int32(v.format)<<16 | int32(v.width)<<8 | int32(v.decimal)
-			}
-
-			binary.Write(s, endian, format)
-			binary.Write(s, endian, format)
-
-			s.Write(stob(v.shortName, 8))
-
-			if segment == 0 && len(v.label) > 0 {
-				binary.Write(s, endian, int32(len(v.label))) // Label length
-				s.Write([]byte(v.label))
-				pad := (4 - len(v.label)) % 4
-
-				if pad < 0 {
-					pad += 4
-				}
-
-				for i := 0; i < pad; i++ {
-					s.Write([]byte{0})
-				}
-			}
-
-			if width > 8 {
-				count := int(elementCount(width) - 1) // Number of extra variables to store string
-				for i := 0; i < count; i++ {
-					binary.Write(s, endian, int32(2))  // rec_type
-					binary.Write(s, endian, int32(-1)) // extended string part
-					binary.Write(s, endian, int32(0))  // has_var_label
-					binary.Write(s, endian, int32(0))  // n_missing_values
-					binary.Write(s, endian, int32(0))  // print
-					binary.Write(s, endian, int32(0))  // write
-					s.Write(stob("        ", 8))       // name
-				}
+			for i := 0; i < pad; i++ {
+				s.Write([]byte{0})
 			}
 		}
+
+		if width > 8 {
+			count := int(elementCount(width) - 1) // Number of extra variables to store string
+			for i := 0; i < count; i++ {
+				binary.Write(s, endian, int32(2))  // rec_type
+				binary.Write(s, endian, int32(-1)) // extended string part
+				binary.Write(s, endian, int32(0))  // has_var_label
+				binary.Write(s, endian, int32(0))  // n_missing_values
+				binary.Write(s, endian, int32(0))  // print
+				binary.Write(s, endian, int32(0))  // write
+				s.Write(stob("        ", 8))       // name
+			}
+		}
+
+		s.variables[v.name] = v
 	}
 
 	return nil
 }
 
-func (s *spssWriter) valueLabelRecords() {
-	for _, v := range variables {
+func (s *SpssWriter) valueLabelRecords() {
+	for _, v := range s.variables {
 		if len(v.labels) > 0 && v.spssType != SpssTypeString {
 			binary.Write(s, endian, int32(3))             // rec_type
 			binary.Write(s, endian, int32(len(v.labels))) // label_count
@@ -292,7 +366,7 @@ func (s *spssWriter) valueLabelRecords() {
 	}
 }
 
-func (s *spssWriter) machineIntegerInfoRecord() {
+func (s *SpssWriter) machineIntegerInfoRecord() {
 	binary.Write(s, endian, int32(7))     // rec_type
 	binary.Write(s, endian, int32(3))     // subtype
 	binary.Write(s, endian, int32(4))     // size
@@ -307,7 +381,7 @@ func (s *spssWriter) machineIntegerInfoRecord() {
 	binary.Write(s, endian, int32(65001)) // character_code
 }
 
-func (s *spssWriter) machineFloatingPointInfoRecord() {
+func (s *SpssWriter) machineFloatingPointInfoRecord() {
 	binary.Write(s, endian, int32(7))                  // rec_type
 	binary.Write(s, endian, int32(4))                  // subtype
 	binary.Write(s, endian, int32(8))                  // size
@@ -317,20 +391,20 @@ func (s *spssWriter) machineFloatingPointInfoRecord() {
 	binary.Write(s, endian, float64(-math.MaxFloat64)) // lowest
 }
 
-func varCount() int32 {
+func (s *SpssWriter) varCount() int32 {
 	var count int32
-	for _, v := range variables {
+	for _, v := range s.variables {
 		count += int32(v.segments)
 	}
 	return count
 }
 
-func (s *spssWriter) variableDisplayParameterRecord() {
-	binary.Write(s, endian, int32(7))     // rec_type
-	binary.Write(s, endian, int32(11))    // subtype
-	binary.Write(s, endian, int32(4))     // size
-	binary.Write(s, endian, varCount()*3) // count
-	for _, v := range variables {
+func (s *SpssWriter) variableDisplayParameterRecord() {
+	binary.Write(s, endian, int32(7))       // rec_type
+	binary.Write(s, endian, int32(11))      // subtype
+	binary.Write(s, endian, int32(4))       // size
+	binary.Write(s, endian, s.varCount()*3) // count
+	for _, v := range s.variables {
 		for se := 0; se < int(v.segments); se++ {
 			binary.Write(s, endian, int32(v.measure)) // measure
 			if v.spssType == SpssTypeString {
@@ -350,27 +424,29 @@ func (s *spssWriter) variableDisplayParameterRecord() {
 	}
 }
 
-func (s *spssWriter) longVarNameRecords() {
+func (s *SpssWriter) longVarNameRecords() {
 	binary.Write(s, endian, int32(7))  // rec_type
 	binary.Write(s, endian, int32(13)) // subtype
 	binary.Write(s, endian, int32(1))  // size
 
 	buf := bytes.Buffer{}
-	for i, v := range variables {
-		buf.Write([]byte(v.shortName))
+	i := 0
+	for short, long := range s.names {
+		buf.Write([]byte(short))
 		buf.Write([]byte("="))
-		buf.Write([]byte(v.name))
-		if i < len(variables)-1 {
+		buf.Write([]byte(long))
+		if i < len(s.names)-1 {
 			buf.Write([]byte{9})
 		}
+		i++
 	}
 	binary.Write(s, endian, int32(buf.Len()))
 	s.Write(buf.Bytes())
 }
 
-func (s *spssWriter) veryLongStringRecord() {
+func (s *SpssWriter) veryLongStringRecord() {
 	b := false
-	for _, v := range variables {
+	for _, v := range s.variables {
 		if int(v.segments) > 1 {
 			b = true
 			break
@@ -387,7 +463,7 @@ func (s *spssWriter) veryLongStringRecord() {
 	binary.Write(s, endian, int32(1))  // size
 
 	buf := bytes.Buffer{}
-	for _, v := range variables {
+	for _, v := range s.variables {
 		if v.segments > 1 {
 			buf.Write([]byte(v.shortName))
 			buf.Write([]byte("="))
@@ -399,7 +475,7 @@ func (s *spssWriter) veryLongStringRecord() {
 	s.Write(buf.Bytes())
 }
 
-func (s *spssWriter) encodingRecord() {
+func (s *SpssWriter) encodingRecord() {
 	binary.Write(s, endian, int32(7))  // rec_type
 	binary.Write(s, endian, int32(20)) // subtype
 	binary.Write(s, endian, int32(1))  // size
@@ -407,10 +483,10 @@ func (s *spssWriter) encodingRecord() {
 	s.Write(stob("UTF-8", 5))          // encoding
 }
 
-func (s *spssWriter) longStringValueLabelsRecord() {
+func (s *SpssWriter) longStringValueLabelsRecord() {
 	// Check if we have any
 	any := false
-	for _, v := range variables {
+	for _, v := range s.variables {
 		if len(v.labels) > 0 && v.spssType == SpssTypeString {
 			any = true
 			break
@@ -422,7 +498,7 @@ func (s *spssWriter) longStringValueLabelsRecord() {
 
 	// Create record
 	buf := new(bytes.Buffer)
-	for _, v := range variables {
+	for _, v := range s.variables {
 		if len(v.labels) > 0 && v.spssType == SpssTypeString {
 			binary.Write(buf, endian, int32(len(v.shortName))) // var_name_len
 			buf.Write([]byte(v.shortName))                     // var_name
@@ -444,21 +520,22 @@ func (s *spssWriter) longStringValueLabelsRecord() {
 	s.Write(buf.Bytes())
 }
 
-func (s *spssWriter) terminationRecord() {
+func (s *SpssWriter) terminationRecord() {
 	binary.Write(s, endian, int32(999)) // rec_type
 	binary.Write(s, endian, int32(0))   // filler
 }
 
 // If you use a buffer, supply it as the flusher argument
 // After this close the file
-func (s *spssWriter) updateHeaderNCases() {
+func (s *SpssWriter) updateHeaderNCases() {
 	s.bytecode.Flush()
 	s.Flush()
 	s.seeker.Seek(80, 0)
-	binary.Write(s.seeker, endian, int32(count)) // ncases in headerRecord
+	binary.Write(s.seeker, endian, int32(s.valCount)) // ncases in headerRecord
 }
 
-func (s *spssWriter) finish() {
+// Finish - Execute this once all variables and values are written to complete the file
+func (s *SpssWriter) Finish() {
 	s.updateHeaderNCases()
-	count = 0
+	s.Flush()
 }

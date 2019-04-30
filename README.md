@@ -10,10 +10,14 @@ Go library for generating SPSS files
 ## Usage
 
 1. Open a file to write to
-`file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)`
+```go
+file, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+```
 
 2. Create a new SpssWriter
-`spssWriter, _ := gospss.NewSpssWriter(file)`
+```go
+spssWriter, _ := gospss.NewSpssWriter(file)
+```
 
 3. Write all variables
 ```go
@@ -46,4 +50,6 @@ w.AddValueRow(values)
 ```
 
 5. Call the Finish func
-`spssWriter.Finish()`
+```go
+spssWriter.Finish()
+```

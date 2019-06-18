@@ -16,6 +16,8 @@ import (
 
 var endian = binary.LittleEndian
 
+const TimeOffset = 12219379200
+
 // SpssWriter defines the struct to write SPSS objects
 type SpssWriter struct {
 	*bufio.Writer                     // Buffered writer
@@ -153,7 +155,7 @@ func (s *SpssWriter) AddValueRow(values map[string]string) error {
 				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
 			} else {
-				s.bytecode.WriteNumber(float64(t.Unix()))
+				s.bytecode.WriteNumber(float64(t.Unix() + TimeOffset))
 			}
 		case SpssTypeDatetime:
 			t, err := time.Parse("02-Jan-2006 15:04:05", val)
@@ -161,7 +163,7 @@ func (s *SpssWriter) AddValueRow(values map[string]string) error {
 				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
 			} else {
-				s.bytecode.WriteNumber(float64(t.Unix()))
+				s.bytecode.WriteNumber(float64(t.Unix() + TimeOffset))
 			}
 		default:
 			f, err := strconv.ParseFloat(val, 64)

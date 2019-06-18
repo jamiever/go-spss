@@ -148,7 +148,7 @@ func (s *SpssWriter) AddValueRow(values map[string]string) error {
 			}
 			s.writeString(v, val)
 		case SpssTypeDate:
-			t, err := time.Parse("1-Jan-2019", val)
+			t, err := time.Parse("02-Jan-2006", val)
 			if err != nil {
 				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()
@@ -156,7 +156,7 @@ func (s *SpssWriter) AddValueRow(values map[string]string) error {
 				s.bytecode.WriteNumber(float64(t.Unix()))
 			}
 		case SpssTypeDatetime:
-			t, err := time.Parse("1-Jan-2019 14:00:00", val)
+			t, err := time.Parse("02-Jan-2006 15:04:05", val)
 			if err != nil {
 				// log.Printf("Writing missing value: %s", v.name)
 				s.bytecode.WriteMissing()

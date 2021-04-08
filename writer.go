@@ -20,15 +20,15 @@ const TimeOffset = 12219379200
 
 // SpssWriter defines the struct to write SPSS objects
 type SpssWriter struct {
-	*bufio.Writer                     // Buffered writer
-	seeker        io.WriteSeeker      // Original writer
-	bytecode      *bytecodeWriter     // Special writer for compressed cases
-	names         map[string]string   // Mapping of names for easy access
-	count         int                 // Count of values
-	index         int32               // Writing index
-	endian        binary.ByteOrder    // Endian
-	variables     map[string]variable // Written variables
-	valCount      int                 // Number of value rows
+	*bufio.Writer                   // Buffered writer
+	seeker        io.WriteSeeker    // Original writer
+	bytecode      *bytecodeWriter   // Special writer for compressed cases
+	names         map[string]string // Mapping of names for easy access
+	count         int               // Count of values
+	index         int32             // Writing index
+	endian        binary.ByteOrder  // Endian
+	variables     []variable        // Written variables
+	valCount      int               // Number of value rows
 }
 
 // NewSpssWriter - Returns an SPSS Writer struct given a file
@@ -42,7 +42,7 @@ func NewSpssWriter(file *os.File) (*SpssWriter, error) {
 		Writer:    writer,
 		bytecode:  byteCode,
 		names:     make(map[string]string),
-		variables: make(map[string]variable),
+		variables: make([]variable, 0, 1),
 		index:     1,
 		endian:    binary.LittleEndian,
 		count:     0,
@@ -326,7 +326,7 @@ func (s *SpssWriter) AddVariable(V *Variable) error {
 			}
 		}
 
-		s.variables[v.name] = v
+		s.variables = append(s.variables, v)
 	}
 
 	return nil

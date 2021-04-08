@@ -1,4 +1,4 @@
-module github.com/viocle-vanek/go-spss
+module github.com/viocle-kvanek/go-spss
 
 go 1.12
 

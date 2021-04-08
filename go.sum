@@ -1,0 +1,4 @@
+github.com/fedom/writerseeker v0.0.0-20210325102000-0f47999325a9 h1:xMCaYUs7LpFR+Il71UJuH8T/UQSYkL6rBdoGjNp7wS4=
+github.com/fedom/writerseeker v0.0.0-20210325102000-0f47999325a9/go.mod h1:Gx6wZ7vV0ktmJ/2n0+I0J7A0Q9oAKQSqFBjxd5AcLaE=
+github.com/orcaman/writerseeker v0.0.0-20200621085525-1d3f536ff85e h1:s2RNOM/IGdY0Y6qfTeUKhDawdHDpK9RGBdx80qN4Ttw=
+github.com/orcaman/writerseeker v0.0.0-20200621085525-1d3f536ff85e/go.mod h1:nBdnFKj15wFbf94Rwfq4m30eAcyY9V/IyKAGQFtqkW0=

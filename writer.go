@@ -290,7 +290,7 @@ func (s *SpssWriter) AddVariable(V *Variable) error {
 	v := variable{
 		index:     s.index,
 		name:      V.Name,
-		shortName: ifEmptyString(V.ShortName, V.getShortName(s)),
+		shortName: V.checkAndGetShortName(s, V.ShortName),
 		spssType:  V.Type,
 		measure:   V.getMeasure(),
 		decimal:   V.Decimal,

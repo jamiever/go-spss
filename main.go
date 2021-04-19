@@ -90,11 +90,13 @@ func (v *Variable) getMeasure() int8 {
 	}
 }
 
-func ifEmptyString(s string, ifEmpty string) string {
-	if s == "" {
-		return ifEmpty
+// checkAndGetShortName returns the specified shortName otherwise generates one
+func (v *Variable) checkAndGetShortName(s *SpssWriter, shortName string) string {
+	if shortName == "" {
+		return v.getShortName(s)
 	}
-	return s
+	s.names[shortName] = v.Name
+	return shortName
 }
 
 // Create a short name and make sure there are no duplicates

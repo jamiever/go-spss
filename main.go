@@ -46,13 +46,14 @@ type Label struct {
 
 // Variable defines the configuration for adding variables to the SPSS configuration
 type Variable struct {
-	Name    string
-	Type    SpssType
-	Measure SpssMeasure
-	Decimal int8
-	Width   int16
-	Label   string
-	Labels  []Label
+	Name      string
+	ShortName string
+	Type      SpssType
+	Measure   SpssMeasure
+	Decimal   int8
+	Width     int16
+	Label     string
+	Labels    []Label
 }
 
 type variable struct {
@@ -87,6 +88,13 @@ func (v *Variable) getMeasure() int8 {
 	default:
 		return 1
 	}
+}
+
+func ifEmptyString(s string, ifEmpty string) string {
+	if s == "" {
+		return ifEmpty
+	}
+	return s
 }
 
 // Create a short name and make sure there are no duplicates

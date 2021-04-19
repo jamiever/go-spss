@@ -532,10 +532,10 @@ func (s *SpssWriter) longStringValueLabelsRecord() {
 	buf := new(bytes.Buffer)
 	for _, v := range s.variables {
 		if len(v.labels) > 0 && v.spssType == SpssTypeString {
-			binary.Write(buf, endian, int32(len(v.shortName))) // var_name_len
-			buf.Write([]byte(v.shortName))                     // var_name
-			binary.Write(buf, endian, int32(v.width))          // var_width
-			binary.Write(buf, endian, int32(len(v.labels)))    // n_labels
+			binary.Write(buf, endian, int32(len(v.name)))   // var_name_len
+			buf.Write([]byte(v.name))                       // var_name
+			binary.Write(buf, endian, int32(v.width))       // var_width
+			binary.Write(buf, endian, int32(len(v.labels))) // n_labels
 			for _, l := range v.labels {
 				binary.Write(buf, endian, int32(len(l.Value))) // value_len
 				buf.Write([]byte(l.Value))                     // value

@@ -129,6 +129,10 @@ func (v *Variable) getShortName(s *SpssWriter) string {
 
 func (v *variable) segmentWidth(index int) int32 {
 	if v.spssType == SpssTypeString {
+		if len(v.labels) <= 0 {
+			return int32(v.width)
+		}
+		// value labels cannot be larger than 40
 		return 40
 	}
 

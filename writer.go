@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fedom/writerseeker"
 )
 
 var endian = binary.LittleEndian
@@ -20,15 +22,16 @@ const TimeOffset = 12219379200
 
 // SpssWriter defines the struct to write SPSS objects
 type SpssWriter struct {
-	*bufio.Writer                     // Buffered writer
-	seeker        io.WriteSeeker      // Original writer
-	bytecode      *bytecodeWriter     // Special writer for compressed cases
-	names         map[string]string   // Mapping of names for easy access
-	count         int                 // Count of values
-	index         int32               // Writing index
-	endian        binary.ByteOrder    // Endian
-	variables     map[string]variable // Written variables
-	valCount      int                 // Number of value rows
+	*bufio.Writer                   // Buffered writer
+	seeker        io.WriteSeeker    // Original writer
+	bytecode      *bytecodeWriter   // Special writer for compressed cases
+	names         map[string]string // Mapping of names for easy access
+	count         int               // Count of values
+	index         int32             // Writing index
+	endian        binary.ByteOrder  // Endian
+	variables     []variable        // Written variables
+	valCount      int               // Number of value rows
+	productName   string            // name to place in header denoting the product generating this file
 }
 
 // NewSpssWriter - Returns an SPSS Writer struct given a file
@@ -38,14 +41,41 @@ func NewSpssWriter(file *os.File) (*SpssWriter, error) {
 	byteCode := newBytecodeWriter(writer, 100.0)
 
 	spssWriter := &SpssWriter{
-		seeker:    file,
-		Writer:    writer,
-		bytecode:  byteCode,
-		names:     make(map[string]string),
-		variables: make(map[string]variable),
-		index:     1,
-		endian:    binary.LittleEndian,
-		count:     0,
+		seeker:      file,
+		Writer:      writer,
+		bytecode:    byteCode,
+		names:       make(map[string]string),
+		variables:   make([]variable, 0, 1),
+		index:       1,
+		endian:      binary.LittleEndian,
+		count:       0,
+		productName: "xml2sav 2.0",
+	}
+
+	spssWriter.headerRecord()
+
+	return spssWriter, nil
+}
+
+// NewSpssWriter - Returns an SPSS Writer struct using an in memory buffer
+func NewSpssInMemoryWriter(f *writerseeker.WriterSeeker, productName string) (*SpssWriter, error) {
+	writer := bufio.NewWriter(f)
+
+	byteCode := newBytecodeWriter(writer, 100.0)
+
+	if productName == "" {
+		productName = "xml2sav 2.0"
+	}
+	spssWriter := &SpssWriter{
+		seeker:      f,
+		Writer:      writer,
+		bytecode:    byteCode,
+		names:       make(map[string]string),
+		variables:   make([]variable, 0, 1),
+		index:       1,
+		endian:      binary.LittleEndian,
+		count:       0,
+		productName: productName,
 	}
 
 	spssWriter.headerRecord()
@@ -194,18 +224,18 @@ func (s *SpssWriter) writeInfoRecords() {
 
 func (s *SpssWriter) headerRecord() {
 	c := time.Now()
-	s.Write(stob("$FL2", 4))                               // rec_tyoe
-	s.Write(stob("@(#) SPSS DATA FILE - xml2sav 2.0", 60)) // prod_name
-	binary.Write(s, endian, int32(2))                      // layout_code
-	binary.Write(s, endian, s.caseSize())                  // nominal_case_size
-	binary.Write(s, endian, int32(1))                      // compression
-	binary.Write(s, endian, int32(0))                      // weight_index
-	binary.Write(s, endian, int32(-1))                     // ncases
-	binary.Write(s, endian, float64(100))                  // bias
-	s.Write(stob(c.Format("02 Jan 06"), 9))                // creation_date
-	s.Write(stob(c.Format("15:04:05"), 8))                 // creation_time
-	s.Write(stob("Generated SPSS", 64))                    // file_label
-	s.Write(stob("\x00\x00\x00", 3))                       // padding
+	s.Write(stob("$FL2", 4))                                                  // rec_tyoe
+	s.Write(stob(fmt.Sprintf("@(#) SPSS DATA FILE - %s", s.productName), 60)) // prod_name
+	binary.Write(s, endian, int32(2))                                         // layout_code
+	binary.Write(s, endian, s.caseSize())                                     // nominal_case_size
+	binary.Write(s, endian, int32(1))                                         // compression
+	binary.Write(s, endian, int32(0))                                         // weight_index
+	binary.Write(s, endian, int32(-1))                                        // ncases
+	binary.Write(s, endian, float64(100))                                     // bias
+	s.Write(stob(c.Format("02 Jan 06"), 9))                                   // creation_date
+	s.Write(stob(c.Format("15:04:05"), 8))                                    // creation_time
+	s.Write(stob("Generated SPSS", 64))                                       // file_label
+	s.Write(stob("\x00\x00\x00", 3))                                          // padding
 }
 
 // AddVariable - Add variables to the SPSS file
@@ -260,7 +290,7 @@ func (s *SpssWriter) AddVariable(V *Variable) error {
 	v := variable{
 		index:     s.index,
 		name:      V.Name,
-		shortName: V.getShortName(s),
+		shortName: V.checkAndGetShortName(s, V.ShortName),
 		spssType:  V.Type,
 		measure:   V.getMeasure(),
 		decimal:   V.Decimal,
@@ -326,7 +356,7 @@ func (s *SpssWriter) AddVariable(V *Variable) error {
 			}
 		}
 
-		s.variables[v.name] = v
+		s.variables = append(s.variables, v)
 	}
 
 	return nil
@@ -502,10 +532,10 @@ func (s *SpssWriter) longStringValueLabelsRecord() {
 	buf := new(bytes.Buffer)
 	for _, v := range s.variables {
 		if len(v.labels) > 0 && v.spssType == SpssTypeString {
-			binary.Write(buf, endian, int32(len(v.shortName))) // var_name_len
-			buf.Write([]byte(v.shortName))                     // var_name
-			binary.Write(buf, endian, int32(v.width))          // var_width
-			binary.Write(buf, endian, int32(len(v.labels)))    // n_labels
+			binary.Write(buf, endian, int32(len(v.name)))   // var_name_len
+			buf.Write([]byte(v.name))                       // var_name
+			binary.Write(buf, endian, int32(v.width))       // var_width
+			binary.Write(buf, endian, int32(len(v.labels))) // n_labels
 			for _, l := range v.labels {
 				binary.Write(buf, endian, int32(len(l.Value))) // value_len
 				buf.Write([]byte(l.Value))                     // value

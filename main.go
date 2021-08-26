@@ -46,13 +46,14 @@ type Label struct {
 
 // Variable defines the configuration for adding variables to the SPSS configuration
 type Variable struct {
-	Name    string
-	Type    SpssType
-	Measure SpssMeasure
-	Decimal int8
-	Width   int16
-	Label   string
-	Labels  []Label
+	Name      string
+	ShortName string
+	Type      SpssType
+	Measure   SpssMeasure
+	Decimal   int8
+	Width     int16
+	Label     string
+	Labels    []Label
 }
 
 type variable struct {
@@ -89,6 +90,15 @@ func (v *Variable) getMeasure() int8 {
 	}
 }
 
+// checkAndGetShortName returns the specified shortName otherwise generates one
+func (v *Variable) checkAndGetShortName(s *SpssWriter, shortName string) string {
+	if shortName == "" {
+		return v.getShortName(s)
+	}
+	s.names[shortName] = v.Name
+	return shortName
+}
+
 // Create a short name and make sure there are no duplicates
 func (v *Variable) getShortName(s *SpssWriter) string {
 	short := strings.ToUpper(v.Name)
@@ -119,6 +129,10 @@ func (v *Variable) getShortName(s *SpssWriter) string {
 
 func (v *variable) segmentWidth(index int) int32 {
 	if v.spssType == SpssTypeString {
+		if len(v.labels) <= 0 {
+			return int32(v.width)
+		}
+		// value labels cannot be larger than 40
 		return 40
 	}
 
